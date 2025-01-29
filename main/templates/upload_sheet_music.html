@@ -1,3 +1,7 @@
+{% extends "layout.html" %}
+
+{% block main %}
+
 <div class="w-[400px] relative border-2 border-gray-300 border-dashed rounded-lg p-6" id="dropzone">
     <input type="file" class="absolute inset-0 w-full h-full opacity-0 z-50" />
     <div class="text-center">
@@ -12,7 +16,7 @@
             </label>
         </h3>
         <p class="mt-1 text-xs text-gray-500">
-            PNG, JPG, GIF up to 10MB
+            PNG, JPG, PDF up to 10MB
         </p>
     </div>
 
@@ -56,3 +60,5 @@
         };
     }
 </script>
+
+{% endblock %}
