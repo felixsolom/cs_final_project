@@ -22,7 +22,9 @@
 
     <img src="" class="mt-4 mx-auto max-h-40 hidden" id="preview">
 </div>
-<button type="submit" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded">Upload</button>
+<div class="flex justify-center">
+    <button type="submit" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded">Upload</button>
+</div>
 </form>
 
 <script>
@@ -73,7 +75,7 @@
             body: formData
           });
           const result = await response.json();
-          alert(result.message);  // Or update the UI as needed
+          alert(result.message); 
         } catch (error) {
           console.error('Error:', error);
           alert('An error occurred during upload');

@@ -9,14 +9,15 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    
+    scores = relationship("Score", back_populates="users")
     def __repr__(self):
         return f"({self.id}) ({self.username} {self.hashed_password})"
 
 class Score(Base):
     __tablename__ = "scores"
     id = Column(Integer, primary_key=True)
-    binary_file = Column(LargeBinary)
+    original_path = Column(String)
+    processed_path  = Column(String)
     user_id = Column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="scores")
         
