@@ -67,15 +67,30 @@
         e.preventDefault();
         const formData = new FormData();
         const fileInput = document.querySelector('input[type="file"]');
-        formData.append('file', fileInput.files[0]);
-      
+
+        console.log(fileInput);
+        
+        const file = fileInput.files[0];
+
+        console.log(file);
+
+        formData.append('file', file);
+
+        for (let [key, value] of formData.entries()) {
+            console.log(key, value);
+        }
         try {
           const response = await fetch('/upload_sheet_music/', {
             method: 'POST',
             body: formData
           });
-          const result = await response.json();
-          alert(result.message); 
+          if (response.ok) {
+            const result = await response.json();
+            alert(result.message);
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.destail);
+          }
         } catch (error) {
           console.error('Error:', error);
           alert('An error occurred during upload');

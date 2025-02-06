@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 
 from fastapi import FastAPI, File, UploadFile, Request, HTTPException, Depends, status, Form
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,7 @@ from helpers import validate_file
 
 import cv2
 import numpy as np
+import fitz
 
 #way to save data files to separate dir
 from pathlib import Path
@@ -65,28 +67,27 @@ def get_db():
         db.close()
         
 # funnction to inject user for jinja templating
-async def get_user_optional(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+async def get_current_user(request: Request, db: Session = Depends(get_db)):   
     token = request.cookies.get("access_token")
-    user = None
-    
     if token:
         try: 
             token = token.replace("Bearer ", "")
             payload = decode_access_token(token)
-            user_id = payload.get("sub")
+            print(f"Decoded payload: {payload}")
+            user_id = int(payload.get("sub"))
             user = db.query(User).filter(User.id == user_id).first()
+            print(f"User fetched: {user}")
         except JWTError:
-            pass 
+            pass
         
-    request.state.user = user
-    return user  
-
-# dependency for validated users routes
-async def get_current_user(request: Request, user: Optional[User] = Depends(get_user_optional)) -> User:
     if not user:
         response = Response(status_code=status.HTTP_401_UNAUTHORIZED)
         response.delete_cookie("access_token")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")        
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")         
+        
+    request.state.user = user
+    return user  
+    
         
 #Login request pydantic model
 class LoginRequest(BaseModel):
@@ -194,34 +195,53 @@ async def upload_sheet_music(request: Request,
     
     MAX_FILE_SIZE = 10 * 1024 * 1024
     
-    if not file:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail= "No file uploaded")
+  #  if user is None:
+   #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated")
     
-    file_type = await validate_file(file)
+    try:
+        print(f"Received file: {file.filename}, type: {file.content_type}, size: {file.size}")
     
-    if file_type not in ["application/pdf", "image/jpeg", "image/jpg", "image/png"]:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail= "Upload a valid file")
-    
-    file_size = 0
-    file_location = DATA_DIR / "originals" / file.filename
-    with open(file_location, "wb") as buffer:
-        async for chunk in file.file():
-            file_size += len(chunk)
-            if file_size >= MAX_FILE_SIZE:
-                raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail= "File size exceeds 10mb limit")
-            buffer.write(chunk)
-                  
-    try:   
-        new_score = Score(original_path=file_location, user_id=user.id)
-        db.add(new_score)
-        db.commit()
-        db.refresh(new_score)
+        file_type = await validate_file(file)
+        
+        if file_type not in ["application/pdf", "image/jpeg", "image/jpg", "image/png"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail= "Upload a valid file")
+        
+        file_size = 0
+        file_location = DATA_DIR / "originals" / file.filename
+        with open(file_location, "wb") as buffer:
+            while chunk := await file.read(1024):
+                file_size += len(chunk)
+                if file_size > MAX_FILE_SIZE:
+                    raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail= "File size exceeds 10mb limit")
+                buffer.write(chunk)
+                    
+        try:
+            file_location = str(file_location)
+            new_score = Score(original_path=file_location, user_id=user.id)
+            db.add(new_score)
+            db.commit()
+            db.refresh(new_score)
+            db.flush
+        except Exception as e:
+            db.rollback()
+            print(f"Error during commit {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"An error accurred while saving to the database: {str(e)}"
+            )
         clean_up(new_score, db)  
-            
+                
         return {"message": "File uploaded successfully"}
+        
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        print(f"Unexpected error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"An unexpected error occured: {str(e)}"
+            )
         
     
     #cleaning up the .pdf and .jpeg images using OpenCV library before proccessing further.
@@ -229,25 +249,26 @@ async def upload_sheet_music(request: Request,
 def clean_up(score: Score, db: Session):
     try:
         original_file_path = Path(score.original_path)
+        if not original_file_path.is_file:
+            raise ValueError(f"Original file does not exist at path: {score.original_path}")
+        
         file_extension = original_file_path.suffix.lower()
+        logging.info(f"Proccessing file: {score.original_path} (extension: {file_extension})")
         
         if file_extension == ".pdf":
-            from pdf2image import convert_from_bytes
-            with open(original_file_path, "rb") as f:
-                pdf_content = f.read()
-                images = convert_from_bytes(
-                    pdf_content,
-                    dpi=300,
-                    first_page=1,
-                    last_page=1,
-                    fmt="jpeg"
-                )
-            if not images:
-                raise ValueError("PDF conversion failed")
+            doc = fitz.open(str(original_file_path))
+            page = doc.load_page(0)
+            pix = page.get_pixmap()
                 
-            # converting PIL image to OpenCV format
-            image_np = np.array(images[0])
-            image = cv2.imdecode(image_np, cv2.IMREAD_GRAYSCALE)
+            if not pix:
+                raise ValueError("PDF conversion failed")
+            
+            # converting pixmap to numpy array for openCV processing
+            image_np = np.array(pix.samples).reshape(pix.height, pix.width, 4)
+            image = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+            
+            if not image:
+                raise ValueError("PDF conversion failed")
             
         else:
             with open(original_file_path, "rb") as f:
@@ -276,8 +297,10 @@ def clean_up(score: Score, db: Session):
         cv2.imwrite(str(processed_path), result)
         score.processed_path = str(processed_path)
         db.commit()
+        logging.info(f"Processing complete. Processed file saved to: {processed_path}")
     except Exception as e:
         db.rollback()
+        logging.error(f"Error during cleanup: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Processing failed") from e
       
     

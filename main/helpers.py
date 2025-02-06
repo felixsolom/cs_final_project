@@ -33,6 +33,7 @@ async def validate_file(file: UploadFile):
     with NamedTemporaryFile(delete=True) as tmp:
         content = await file.read(2048)
         tmp.write(content)
+        tmp.flush()
         mime = Magic(mime=True)
         file_type = mime.from_file(tmp.name)
     
