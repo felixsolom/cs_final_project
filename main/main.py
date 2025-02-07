@@ -249,7 +249,7 @@ async def upload_sheet_music(request: Request,
 def clean_up(score: Score, db: Session):
     try:
         original_file_path = Path(score.original_path)
-        if not original_file_path.is_file:
+        if not original_file_path.is_file():
             raise ValueError(f"Original file does not exist at path: {score.original_path}")
         
         file_extension = original_file_path.suffix.lower()
@@ -257,56 +257,98 @@ def clean_up(score: Score, db: Session):
         
         if file_extension == ".pdf":
             doc = fitz.open(str(original_file_path))
-            page = doc.load_page(0)
-            pix = page.get_pixmap()
+            processed_dir = DATA_DIR / "processed" / f"score_{score.id}"
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pix = page.get_pixmap(alpha=False)
+                logging.info(f"PDF channels: {pix.n} (3=RGB, 4=RGBA)")
+                    
+                if not pix or pix.width == 0 or pix.height == 0:
+                    raise ValueError("PDF conversion failed: Invalid page dimensions")
                 
-            if not pix:
-                raise ValueError("PDF conversion failed")
-            
-            # converting pixmap to numpy array for openCV processing
-            image_np = np.array(pix.samples).reshape(pix.height, pix.width, 4)
-            image = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-            
-            if not image:
-                raise ValueError("PDF conversion failed")
-            
+                #debug logging
+                logging.info(
+                    f"PDF dimensions: {pix.width}x{pix.height}, "
+                    f"Pixel data size: {len(pix.samples)} bytes"
+                )
+                
+                #verifying pixel data integrity
+                expected_size = pix.width * pix.height * pix.n 
+                if len(pix.samples) != expected_size:
+                    raise ValueError(
+                        f"Pixel data mismatch. Expected {expected_size} bytes, got {len(pix.samples)}"
+                    )
+                                
+                # converting pixmap to numpy array for openCV processing
+                image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                image = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+                
+                if image is None or image.size == 0:
+                    raise ValueError(f"Page {page_num + 1}: Empty image")
+                
+                #apply cleaning
+                denoised = cv2.bilateralFilter(image, 9, 75, 75)
+                #binarization
+                binary = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                #Hough transform
+                edges =cv2.Canny(binary, 50, 150, apertureSize=3)
+                lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
+                if lines is not None:
+                    angles = [line[0][1] for line in lines]
+                    median_angle = np.degrees(np.median(angles))
+                    center = (image.shape[1]//2, image.shape[0]//2)
+                    rot_mat = cv2.getRotationMatrix2D(center, median_angle -90, 1.0)
+                    result = cv2.warpAffine(binary, rot_mat, 
+                                            (image.shape[1], image.shape[0]), 
+                                            flags=cv2.INTER_LINEAR)
+                else:
+                    result = binary 
+                
+                page_path = processed_dir / f"page_{page_num + 1}.jpg"
+                cv2.imwrite(str(page_path), result)
+                
+            # now taking care of non .pdf files   
         else:
             with open(original_file_path, "rb") as f:
-                image_data = f.read()   
-            image_np = np.frombuffer(image_data, np.uint8)
+                image_data = f.read()
+                       
+            image_np = np.frombuffer(image_data, dtype=np.uint8)
             image = cv2.imdecode(image_np, cv2.IMREAD_GRAYSCALE)
-         #apply cleaning
-        denoised = cv2.bilateralFilter(image, 9, 75, 75)
-        #binarization
-        binary = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        #Hough transform
-        edges =cv2.Canny(binary, 50, 150, apertureSize=3)
-        lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
-        if lines is not None:
-            angles = [line[0][1] for line in lines]
-            median_angle = np.degrees(np.median(angles))
-            center = (image.shape[1]//2, image.shape[0]//2)
-            rot_mat = cv2.getRotationMatrix2D(center, median_angle -90, 1.0)
-            result = cv2.warpAffine(binary, rot_mat, 
-                                    (image.shape[1], image.shape[0]), 
-                                    flags=cv2.INTER_LINEAR)
-        else:
-            result = binary 
-            
-        processed_path = DATA_DIR / "processed" / f"{score.id}.jpg"
-        cv2.imwrite(str(processed_path), result)
-        score.processed_path = str(processed_path)
+                
+            if image is None or image.size == 0:
+                raise ValueError("Failed to load image from file")
+                
+            denoised = cv2.bilateralFilter(image, 9, 75, 75)
+                #binarization
+            binary = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                #Hough transform
+            edges =cv2.Canny(binary, 50, 150, apertureSize=3)
+            lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
+            if lines is not None:
+                angles = [line[0][1] for line in lines]
+                median_angle = np.degrees(np.median(angles))
+                center = (image.shape[1]//2, image.shape[0]//2)
+                rot_mat = cv2.getRotationMatrix2D(center, median_angle -90, 1.0)
+                result = cv2.warpAffine(binary, rot_mat, 
+                                            (image.shape[1], image.shape[0]), 
+                                            flags=cv2.INTER_LINEAR)
+            else:
+                result = binary 
+                
+            page_path = processed_dir / f"{score.id}.jpg"
+            cv2.imwrite(str(page_path), result)
+                
+        score.processed_path = str(processed_dir)
         db.commit()
-        logging.info(f"Processing complete. Processed file saved to: {processed_path}")
+        logging.info(f"Processing complete. Processed files saved to: {processed_dir}")
     except Exception as e:
         db.rollback()
         logging.error(f"Error during cleanup: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Processing failed") from e
-      
-    
+        
 """
-    # Process the file for OMR TODO
-    result = await process_omr(file)
-    return {"result": result}
-
+def covert_to_musicxml(score: Score, db: Session):
+    
 """
