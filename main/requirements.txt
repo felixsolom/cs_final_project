@@ -28,9 +28,7 @@ dnspython==2.7.0
 email-validator==2.2.0
     # via -r requirements.in
 exceptiongroup==1.2.2
-    # via
-    #   -r requirements.in
-    #   anyio
+    # via -r requirements.in
 fastapi==0.115.7
     # via -r requirements.in
 fastapi-cli==0.0.7
@@ -40,6 +38,8 @@ h11==0.14.0
     #   -r requirements.in
     #   httpcore
     #   uvicorn
+hpack==4.1.0
+    # via -r requirements.in
 httpcore==1.0.7
     # via
     #   -r requirements.in
@@ -76,6 +76,9 @@ numpy==2.0.2
     #   opencv-python
 opencv-python==4.11.0.86
     # via -r requirements.in
+
+passlib==1.7.4
+
 pydantic==2.10.6
     # via
     #   -r requirements.in
@@ -88,12 +91,18 @@ pygments==2.19.1
     # via
     #   -r requirements.in
     #   rich
+PyMuPDF==1.18.19
+
 python-dotenv==1.0.1
     # via
     #   -r requirements.in
     #   uvicorn
+python-magic==0.4.24
+
 python-multipart==0.0.20
     # via -r requirements.in
+python-jose==3.3.0
+
 pyyaml==6.0.2
     # via
     #   -r requirements.in
@@ -119,24 +128,22 @@ starlette==0.45.3
     # via
     #   -r requirements.in
     #   fastapi
+sqlalchemy==2.0.0
+
 typer==0.15.1
     # via
     #   -r requirements.in
     #   fastapi-cli
-typing==3.10.0.0
+
     # via -r requirements.in
-typing-extensions==4.12.2
+
     # via
     #   -r requirements.in
-    #   anyio
     #   fastapi
     #   pydantic
     #   pydantic-core
-    #   rich
     #   rich-toolkit
-    #   starlette
     #   typer
-    #   uvicorn
 uvicorn==0.34.0
     # via
     #   -r requirements.in
@@ -153,3 +160,5 @@ websockets==14.2
     # via
     #   -r requirements.in
     #   uvicorn
+zstandard==0.23.0
+    # via -r requirements.in

@@ -2,23 +2,23 @@ from __future__ import with_statement
 from logging.config import fileConfig
 import sys
 from os.path import abspath, dirname
-sys.path.insert(0, "/Users/felixsolomon/Final Project cs50/cs_final_project/main")
+sys.path.insert(0, dirname(dirname(abspath(__file__))))
 # Your model imports here
-from models import Base
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-from sqlalchemy import create_engine, pool
 
 from alembic import context
 
-from models import Base
-from models import User, Score
+from app.database import Base
+from app.database import DATABASE_URL
+from app.models import User, Score
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
+config.set_main_option('sqlalchemy.url', DATABASE_URL)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

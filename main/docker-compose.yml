@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./static:/app/static 
+      - ./templates:/app/templates
+    ports:
+      - "8000:8000"
+    environment:
+      - AUDIVERIS_PATH=/app/audiveris/bin/audiveris
+      - PYTHONBBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      
+

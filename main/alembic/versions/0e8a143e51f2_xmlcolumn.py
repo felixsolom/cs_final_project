@@ -1,8 +1,8 @@
-"""initial
+"""xmlcolumn
 
-Revision ID: 43c0e3aa10c2
+Revision ID: 0e8a143e51f2
 Revises: 
-Create Date: 2025-02-06 00:15:15.801066
+Create Date: 2025-02-10 16:32:06.300333
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '43c0e3aa10c2'
+revision: str = '0e8a143e51f2'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,6 +34,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('original_path', sa.String(), nullable=False),
     sa.Column('processed_path', sa.String(), nullable=True),
+    sa.Column('xmlmusic_path', sa.String(), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')

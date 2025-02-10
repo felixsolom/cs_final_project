@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, status, Depends, UploadFile
 from functools import wraps
-from auth_utils import decode_access_token
+from .auth_utils import decode_access_token
 from magic import Magic
 from tempfile import NamedTemporaryFile
 
@@ -39,5 +39,7 @@ async def validate_file(file: UploadFile):
     
     await file.seek(0)
     return file_type
+
+
     
 

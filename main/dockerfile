@@ -1,0 +1,43 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install JDK 21 from Eclipse Temurin
+RUN apt-get update && apt-get install -y \
+    wget \
+    git \
+    unzip \
+    libopencv-dev \
+    libmagic1 \
+    tesseract-ocr \
+    ca-certificates \
+    curl \
+    && wget https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz \
+    && tar -xzf OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz -C /opt \
+    && rm OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz \
+    && update-alternatives --install /usr/bin/java java /opt/jdk-21.0.3+9/bin/java 1
+
+    # Clone Audiveris repository and checkout the v5.4 tag
+RUN git clone https://github.com/Audiveris/audiveris.git \
+    && cd audiveris \
+    && git checkout tags/v5.4
+
+# Build Audiveris with Gradle
+WORKDIR /app/audiveris
+RUN ./gradlew installDist  # Build and install the distribution
+
+# Set the correct path to the Audiveris executable
+ENV AUDIVERIS_PATH=/app/audiveris/build/install/audiveris/bin/Audiveris
+
+# Return to app directory and set up Python environment
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug"]

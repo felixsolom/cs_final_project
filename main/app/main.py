@@ -1,4 +1,3 @@
-from typing import Optional
 import logging
 
 from fastapi import FastAPI, File, UploadFile, Request, HTTPException, Depends, status, Form
@@ -8,15 +7,16 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from models import User, Score, Base
+from sqlalchemy.orm import Session
+from .database import SessionLocal, engine
+from .models import User, Score
 
 from pydantic import BaseModel
 
 # aux locally created functions
-from auth_utils import verify_password, create_access_token ,decode_access_token, JWTError, hash_password
-from helpers import validate_file
+from .auth_utils import verify_password, create_access_token ,decode_access_token, JWTError, hash_password
+from .helpers import validate_file
+from .audiveris import AudiverisConverter
 
 import cv2
 import numpy as np
@@ -26,23 +26,20 @@ import fitz
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR /"data"
+BASE_DIR = Path(__file__).parent.parent 
+DATA_DIR = BASE_DIR / "data"
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
+
 DATA_DIR.mkdir(exist_ok=True)
 (DATA_DIR / "originals").mkdir(exist_ok=True, parents=True)
 (DATA_DIR / "processed").mkdir(exist_ok=True, parents=True)
+(DATA_DIR / "xmlmusic").mkdir(exist_ok=True, parents=True)
 
-# database URL
-DATABASE_URL = "sqlite:///./scores.db" 
-
-# creating sqlalchemy boiler plate    
-engine = create_engine(DATABASE_URL, echo=True)
-# Base.metadata.create_all(bind=engine)    
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) 
 
 #fastapi boiler plate
 app = FastAPI()
+converter = AudiverisConverter
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,10 +49,11 @@ app.add_middleware(
     allow_headers=["*"], 
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
 
 
 #get DB session
@@ -66,7 +64,12 @@ def get_db():
     finally:
         db.close()
         
-# funnction to inject user for jinja templating
+# docker health check func
+@app.get("/health")
+async def health_check():
+    return {"status": "Healthy"}
+        
+# funnction to inject user for jinja templating and check for authorization of user
 async def get_current_user(request: Request, db: Session = Depends(get_db)):   
     token = request.cookies.get("access_token")
     if token:
@@ -163,7 +166,7 @@ def login(response: Response, request: Request, data: LoginRequest = Depends(Log
         
     access_token = create_access_token(data={"sub": str(user.id)})
         
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/logged_in", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
@@ -180,6 +183,16 @@ def login(response: Response, request: Request, data: LoginRequest = Depends(Log
 async def index(request: Request):
     return templates.TemplateResponse(
         "index.html", context={'request':request}
+    )
+    
+@app.get("/logged_in")
+async def index(request: Request, user: User = Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return templates.TemplateResponse(
+        "logged_in.html", 
+        {"request": request,
+        "message": f"Welcome {user.username}!"}
     )
 
 @app.get("/upload_sheet_music/")
@@ -229,9 +242,11 @@ async def upload_sheet_music(request: Request,
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An error accurred while saving to the database: {str(e)}"
             )
-        clean_up(new_score, db)  
+        clean_up(new_score, db)
+        
+        convert_to_musicxml(new_score, db)  
                 
-        return {"message": "File uploaded successfully"}
+        return {"message": "File processed successfully"}
         
     except HTTPException as e:
         raise e
@@ -348,7 +363,39 @@ def clean_up(score: Score, db: Session):
         logging.error(f"Error during cleanup: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Processing failed") from e
         
-"""
-def covert_to_musicxml(score: Score, db: Session):
+
+def convert_to_musicxml(score: Score, db: Session):
+    try:
+        processed_dir = Path(score.processed_path)
+        musicxml_dir = DATA_DIR /"xmlmusic" / f"score_{score.id}"
+        musicxml_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not processed_dir.exists():
+            raise ValueError(f"Processed directory doesn't exist at {score.processed_path}")
+        
+        processed_files = list(processed_dir.glob("*.jpg"))
+        if not processed_files:
+            raise ValueError(f"No jpg files found in {processed_dir}")
+        
+        converter._validate_installation()
+        
+        for file_path in processed_files:
+            result = converter.convert_to_musicxml(
+                str(file_path),
+                str(musicxml_dir)
+            )
+            if result is None:
+                raise ValueError(f"Conversion failed for {file_path}")
+        
+        score.xmlmusic_path = str(musicxml_dir)
+        db.commit()
+        logging.info(f"Converting complete. MusicXML file saved to {score.xmlmusic_path}")
+        
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Error during mxl conversion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="converting failed"
+            ) from e
     
-"""
