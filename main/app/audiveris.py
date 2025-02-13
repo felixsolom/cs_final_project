@@ -2,6 +2,7 @@ import subprocess
 import logging
 from pathlib import Path
 from typing import Optional, Union
+from time import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class AudiverisConverter:
         self,
         input_path: str,
         output_dir: str,
-        timeout: int = 600
+        timeout: int = 1800
     ) -> Optional[str]:
         input_path = Path(input_path)
         output_dir = Path(output_dir)
@@ -29,9 +30,11 @@ class AudiverisConverter:
             cmd = [
                 str(self.audiveris_path),
                 "-batch", 
-                "-export", 
+                "-export",
+                "-constant", "org.audiveris.omr.sheet.BookManager.useOpus=true",
+                "-constant", "omr.rhythms.preserveOriginalVoices=true",
+                "-constant", "omr.steps.RHYTHMS.maxGap=4",  
                 "-output", str(output_dir),
-                "-save",
                 str(input_path)
             ]
             
@@ -45,21 +48,28 @@ class AudiverisConverter:
                 check=True
             )
             
-            if result.returncode != 0:
-                logger.error(f"Audiveris error: {result.stderr}")
-                logger.error(f"Audiveris autput: {result.stdout}")
+            sleep(10 if input_path.stat().st_size > 1_000_000 else 5) 
+            
                 
-            mxl_file = output_dir / f"{input_path.stem}.mxl"
+            mxl_file = output_dir / f"{input_path.stem}.opus.mxl"
+            
             if mxl_file.exists():
                 logger.info(f"Successfully generated {mxl_file}")
                 return str(mxl_file)
             
-            logger.error("MXL file not created")
-            return None
+            else:
+                logger.error(f"MXL file missing. Directory contents:")
+                for f in output_dir.glob("*"):
+                    logger.error(f" - {f}")
+                return None            
         
         except subprocess.TimeoutExpired:
             logger.error(f"Conversion timed out after {timeout}s")
             return None
-        except Exception as e:
-            logger.error(f"Conversion failed: {str(e)}")
+        except subprocess.CalledProcessError as e:
+            logger.error("Audiveris crash details:")
+            logger.error(f"Command: {e.cmd}")
+            logger.error(f"Exit code:  {e.returncode}")
+            logger.error(f"STDOUT:\n{e.stdout[:2000]}")
+            logger.error(f"STDERR:\n{e.stderr[:2000]}")
             return None

@@ -409,18 +409,14 @@ def convert_to_musicxml(score: Score, db: Session):
         if not processed_file.exists():
             raise ValueError(f"Processed file doesn't exist at {score.processed_path}")
         
-        processed_file = str(processed_file)
+        result = converter.convert_to_musicxml(
+            str(processed_file),
+            str(musicxml_dir)
+        )
+        if result is None:
+            raise ValueError(f"Conversion failed for {processed_file}")
         
-        for page in processed_file:
-            logging.debug(f"Processing file: {page}")
-            result = converter.convert_to_musicxml(
-                str(page),
-                str(musicxml_dir)
-            )
-            if result is None:
-                raise ValueError(f"Conversion failed for {processed_file}")
-        
-        score.xmlmusic_path = str(musicxml_dir)
+        score.xmlmusic_path = result 
         db.commit()
         logging.info(f"Converting complete. MusicXML file saved to {score.xmlmusic_path}")
         

@@ -2,6 +2,13 @@
 
 services:
   web:
+    deploy:
+      resources:
+        limits: 
+          cpus: '4'
+          memory: 8G
+        reservations:
+          memory: 4G
     build: .
     volumes:
       - ./data:/app/data         
@@ -10,7 +17,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - AUDIVERIS_PATH=/app/audiveris/build/install/audiveris/bin/audiveris  
+      - AUDIVERIS_PATH=/app/audiveris/build/install/audiveris/bin/audiveris
+      - AUDIVERIS_OPTS=-Xmx6g -XX:+UseZGC -Djava.awt.headless=true --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED
+      - OMP_THREAD_LIMIT=4  
       - PYTHONUNBUFFERED=1        
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
