@@ -6,23 +6,21 @@ from typing import Optional, Union
 logger = logging.getLogger(__name__)
 
 class AudiverisConverter:
-    def __init__(self, audiveris_path: str = "/audiveris/bin/Audiveris"):
+    def __init__(self, audiveris_path: str = "/app/audiveris/build/install/audiveris/bin/audiveris"):
         self.audiveris_path = Path(audiveris_path)
         self._validate_installation()
         
-    @staticmethod
-    def _validate_installation():
-        audiveris_path = Path("app/audiveris/bin/Audiveris")
-        if not audiveris_path.exists():
+    def _validate_installation(self):
+        if not self.audiveris_path.exists():
             raise FileNotFoundError(
-                f"Audiveris not fount. Verify docker install contains Audiveris. "
+                f"Audiveris not fount at {self.audiveris_path}. Verify docker installation contains Audiveris."
                 )
             
     def convert_to_musicxml(
         self,
-        input_path: Union[str, Path],
-        output_dir: Union[str, Path],
-        timeout: int = 300
+        input_path: str,
+        output_dir: str,
+        timeout: int = 600
     ) -> Optional[str]:
         input_path = Path(input_path)
         output_dir = Path(output_dir)
@@ -30,13 +28,14 @@ class AudiverisConverter:
         try:
             cmd = [
                 str(self.audiveris_path),
-                "-batch",
-                "-export",
+                "-batch", 
+                "-export", 
                 "-output", str(output_dir),
-                "input", str(input_path),
-                "-save", 
-                "-close"
+                "-save",
+                str(input_path)
             ]
+            
+            logger.debug(f"Running command {' '.join(cmd )}")
             
             result = subprocess.run(
                 cmd,
@@ -48,6 +47,7 @@ class AudiverisConverter:
             
             if result.returncode != 0:
                 logger.error(f"Audiveris error: {result.stderr}")
+                logger.error(f"Audiveris autput: {result.stdout}")
                 
             mxl_file = output_dir / f"{input_path.stem}.mxl"
             if mxl_file.exists():

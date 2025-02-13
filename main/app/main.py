@@ -39,7 +39,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 #fastapi boiler plate
 app = FastAPI()
-converter = AudiverisConverter
+converter = AudiverisConverter()
 
 app.add_middleware(
     CORSMiddleware,
@@ -246,7 +246,7 @@ async def upload_sheet_music(request: Request,
         
         convert_to_musicxml(new_score, db)  
                 
-        return {"message": "File processed successfully"}
+        return {"message": "File processed and converted successfully"}
         
     except HTTPException as e:
         raise e
@@ -267,13 +267,16 @@ def clean_up(score: Score, db: Session):
         if not original_file_path.is_file():
             raise ValueError(f"Original file does not exist at path: {score.original_path}")
         
+        processed_dir = DATA_DIR / "processed" / f"score_{score.id}"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        
         file_extension = original_file_path.suffix.lower()
         logging.info(f"Proccessing file: {score.original_path} (extension: {file_extension})")
         
         if file_extension == ".pdf":
             doc = fitz.open(str(original_file_path))
-            processed_dir = DATA_DIR / "processed" / f"score_{score.id}"
-            processed_dir.mkdir(parents=True, exist_ok=True)
+            new_pdf_path = processed_dir / f"cleaned_score_{score.id}.pdf"
+            new_doc = fitz.open()
             
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
@@ -319,13 +322,32 @@ def clean_up(score: Score, db: Session):
                                             (image.shape[1], image.shape[0]), 
                                             flags=cv2.INTER_LINEAR)
                 else:
-                    result = binary 
+                    result = binary
                 
-                page_path = processed_dir / f"page_{page_num + 1}.jpg"
-                cv2.imwrite(str(page_path), result)
+                cleaned_image = result
+                
+                pix = fitz.Pixmap(
+                    fitz.csGRAY, 
+                    cleaned_image.shape[1], 
+                    cleaned_image.shape[0],
+                    cleaned_image.ravel().tobytes()
+                )
+                new_page = new_doc.new_page(width=cleaned_image.shape[1], height=cleaned_image.shape[0])
+                
+                new_page.insert_image(new_page.rect, pixmap=pix)
+                
+            new_doc.save(str(new_pdf_path))
+            new_doc.close()
+            score.processed_path = str(new_pdf_path) 
+                
+              #  page_path = processed_dir / f"page_{page_num + 1}.jpg"
+               # cv2.imwrite(str(page_path), result)              
                 
             # now taking care of non .pdf files   
         else:
+            new_pdf_path = processed_dir / f"cleaned_{score.id}.pdf"
+            new_doc = fitz.open()
+            
             with open(original_file_path, "rb") as f:
                 image_data = f.read()
                        
@@ -350,12 +372,26 @@ def clean_up(score: Score, db: Session):
                                             (image.shape[1], image.shape[0]), 
                                             flags=cv2.INTER_LINEAR)
             else:
-                result = binary 
+                result = binary
+            
+            cleaned_image = result
                 
-            page_path = processed_dir / f"{score.id}.jpg"
-            cv2.imwrite(str(page_path), result)
+            pix = fitz.Pixmap(
+                fitz.csGRAY, 
+                cleaned_image.shape[1], 
+                cleaned_image.shape[0],
+                cleaned_image.ravel().tobytes()
+            )
+            new_page = new_doc.new_page(width=cleaned_image.shape[1], height=cleaned_image.shape[0])
                 
-        score.processed_path = str(processed_dir)
+            new_page.insert_image(new_page.rect, pixmap=pix)
+                
+            new_doc.save(str(new_pdf_path))
+            new_doc.close()
+            score.processed_path = str(new_pdf_path)        
+          #  page_path = processed_dir / f"{score.id}.jpg"
+          #  cv2.imwrite(str(page_path), result)
+          
         db.commit()
         logging.info(f"Processing complete. Processed files saved to: {processed_dir}")
     except Exception as e:
@@ -366,26 +402,23 @@ def clean_up(score: Score, db: Session):
 
 def convert_to_musicxml(score: Score, db: Session):
     try:
-        processed_dir = Path(score.processed_path)
+        processed_file = Path(score.processed_path)
         musicxml_dir = DATA_DIR /"xmlmusic" / f"score_{score.id}"
         musicxml_dir.mkdir(parents=True, exist_ok=True)
         
-        if not processed_dir.exists():
-            raise ValueError(f"Processed directory doesn't exist at {score.processed_path}")
+        if not processed_file.exists():
+            raise ValueError(f"Processed file doesn't exist at {score.processed_path}")
         
-        processed_files = list(processed_dir.glob("*.jpg"))
-        if not processed_files:
-            raise ValueError(f"No jpg files found in {processed_dir}")
+        processed_file = str(processed_file)
         
-        converter._validate_installation()
-        
-        for file_path in processed_files:
+        for page in processed_file:
+            logging.debug(f"Processing file: {page}")
             result = converter.convert_to_musicxml(
-                str(file_path),
+                str(page),
                 str(musicxml_dir)
             )
             if result is None:
-                raise ValueError(f"Conversion failed for {file_path}")
+                raise ValueError(f"Conversion failed for {processed_file}")
         
         score.xmlmusic_path = str(musicxml_dir)
         db.commit()
