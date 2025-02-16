@@ -2,22 +2,47 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Installing system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     git \
     unzip \
     libopencv-dev \
     libmagic1 \
-    tesseract-ocr \
     libtesseract-dev \
     libleptonica-dev \
     ffmpeg \
     ca-certificates \
     curl \
-    build-essential
+    build-essential \
+    libgl1-mesa-glx \
+    libxi6 \
+    libxrender1 \
+    libxtst6 \
+    libjpeg62-turbo \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install JDK 21
+# TESSERACT with legacy data files
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr \
+    && apt-get purge -y tesseract-ocr-eng tesseract-ocr-osd \
+    && mkdir -p /usr/share/tessdata \
+    && wget -O /usr/share/tessdata/eng.traineddata \
+        https://github.com/tesseract-ocr/tessdata/raw/4.00/eng.traineddata \
+    && wget -O /usr/share/tessdata/osd.traineddata \
+        https://github.com/tesseract-ocr/tessdata/raw/4.00/osd.traineddata \
+    && chmod -R a+rx /usr/share/tesseract-ocr \
+    && chmod -R a+rx /usr/share/tessdata
+
+
+# 2. Setting environment variables for both Tesseract and JNI
+ENV TESSDATA_PREFIX=/usr/share/tessdata \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib:/usr/lib/jni:$LD_LIBRARY_PATH"
+
+
+
+# JDK 21
 RUN wget https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz \
     && tar -xzf OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz -C /opt \
     && rm OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz \
@@ -26,24 +51,24 @@ RUN wget https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21
 
 ENV JAVA_HOME=/opt/jdk-21.0.3+9
 
-# Clone Audiveris v5.4
+ENV JAVA_TOOL_OPTIONS="-Xmx4096m -Djava.awt.headless=true -Dorg.bytedeco.javacpp.maxbytes=3G"
+ENV OMR_STEPS=GRID,HEADERS,NOTES
+
+# Cloning Audiveris v5.4
 RUN git clone https://github.com/Audiveris/audiveris.git \
     && cd audiveris \
     && git checkout tags/v5.4
 
 WORKDIR /app/audiveris
 
-# Build steps
+
 RUN sed -i '/distributionSha256Sum/d' gradle/wrapper/gradle-wrapper.properties \
     && ./gradlew wrapper --gradle-version 8.5 --no-daemon --stacktrace \
         -Dorg.gradle.wrapper.checksum=no \
     && sed -i "1s|^|org.gradle.java.home=${JAVA_HOME}\n|" gradle.properties \
     && ./gradlew :app:clean :app:distZip -Dorg.gradle.java.home=$JAVA_HOME --info
 
-# ---------------------------------------------------------------
-# ZIP Handling
-# ---------------------------------------------------------------
-# Check if ZIP exists
+
 RUN { [ -f app/build/distributions/app-*.zip ] || \
     { echo "CRITICAL ERROR: ZIP NOT FOUND"; \
       echo "Directory contents:"; \
@@ -51,16 +76,15 @@ RUN { [ -f app/build/distributions/app-*.zip ] || \
       exit 1; }; } \
     && echo "ZIP file exists"
 
-# Extract and fix binary name
+# changing the binary name
 RUN mkdir -p build/install/ \
     && unzip app/build/distributions/app-*.zip -d build/install/ \
     && mv build/install/app-* build/install/audiveris \
     && mv build/install/audiveris/bin/Audiveris build/install/audiveris/bin/audiveris
 
-# Final verification
+# verification
 RUN ls -l build/install/audiveris/bin/audiveris
 
-# ---------------------------------------------------------------
 # Python setup
 WORKDIR /app
 ENV PYTHONPATH=/app

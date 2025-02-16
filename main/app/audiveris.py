@@ -29,11 +29,46 @@ class AudiverisConverter:
         try:
             cmd = [
                 str(self.audiveris_path),
-                "-batch", 
+                "-batch",
                 "-export",
+                "-save",
+                "-print",
+                "-constant", "omr.fallback.Reader=PDF_BOX", 
                 "-constant", "org.audiveris.omr.sheet.BookManager.useOpus=true",
+                
+                "-constant", "ocr.engine=TesseractOCR",
+                "-constant", "ocr.language=eng",
+                "-constant", "ocr.tessdataPath=/usr/share/tessdata",
+                "-constant", "ocr.legacyMode=true",
+                "-constant", "ocr.engineMode=0",
+                "-constant", "omr.engine.tesseract.path=/usr/bin/tesseract", 
+                "-constant", "omr.engine.tesseract.dataPath=/usr/share/tessdata",
+                
+                "-constant", "omr.steps.RHYTHMS.maxRetries=5",
                 "-constant", "omr.rhythms.preserveOriginalVoices=true",
-                "-constant", "omr.steps.RHYTHMS.maxGap=4",  
+                "-constant", "omr.rhythms.maxDuration=16",
+                "-constant", "omr.steps.RHYTHMS.maxGap=6",  
+                "-constant", "omr.steps.TIME.maxCandidates=2",
+                "-constant", "omr.steps.KEYS.maxCandidates=2",
+                "-constant", "omr.steps.CLEFS.maxCandidates=2",
+                "-constant", "omr.steps.RHYTHMS.useSamples=true", 
+                "-constant", "omr.steps.GRID.staffLineThickness=3", 
+                "-constant", "omr.steps.GRID.minStaffLineCount=4",
+                "-constant", "omr.steps.GRID.peakMergeX=0.5",
+                "-constant", "omr.steps.GRID.peakMergeY=0.3", 
+                "-constant", "omr.steps.TIME_PURITY=0.9", 
+                "-constant", "omr.steps.BEAMS.maxSlope=0.3",
+                "-constant", "omr.steps.BEAMS.minGrade=0.3"
+                "-constant", "omr.steps.BEAMS.maxThickness=4"
+                "-constant", "omr.steps.HEADS.minGrade=0.5",
+                "-constant", "omr.steps.STEMMING.minStemLength=8",  # Reduce if stems are short (default=10)
+                "-constant", "omr.steps.STEMMING.minStemWidth=1",   # Reduce for thinner stems (default=2)
+                "-constant", "omr.steps.STEMMING.peakThreshold=20", # Lower to detect faint stems (default=30) 
+                "-constant", "sheet.maxStubs=5",
+                "-constant", "sheet.maxErrors=100",
+                "-constant", "omr.sheet.staves.allowTablature=false",
+                "-constant", "book.export.force=true",              # Force export even on partial success 
+                
                 "-output", str(output_dir),
                 str(input_path)
             ]

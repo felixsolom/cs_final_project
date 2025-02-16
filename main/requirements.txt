@@ -162,3 +162,5 @@ websockets==14.2
     #   uvicorn
 zstandard==0.23.0
     # via -r requirements.in
+deprecated==1.2.18
+wrapt==1.17.2

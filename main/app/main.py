@@ -1,5 +1,11 @@
 import logging
 
+logging.basicConfig(
+    level=logging.DEBUG, 
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S" 
+)
+
 from fastapi import FastAPI, File, UploadFile, Request, HTTPException, Depends, status, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.requests import Request
@@ -306,25 +312,55 @@ def clean_up(score: Score, db: Session):
                 if image is None or image.size == 0:
                     raise ValueError(f"Page {page_num + 1}: Empty image")
                 
+                std_dev = np.std(image)
+                if 50 < std_dev < 150:
+                    logging.info(f"Skipping agressive processing for clean page (std_dev = {std_dev:.2f})")
+                    _, otsu_binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+                    # Apply a gentler adaptive threshold
+                    adaptive_binary = cv2.adaptiveThreshold(
+                        image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 5  # Tuned values
+                    )
+                    # Blend the two binarized results to reduce harshness
+                    binary = cv2.bitwise_and(otsu_binary, adaptive_binary) 
+                     
+                else: 
                 #apply cleaning
-                denoised = cv2.bilateralFilter(image, 9, 75, 75)
-                #binarization
-                binary = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-                #Hough transform
-                edges =cv2.Canny(binary, 50, 150, apertureSize=3)
-                lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
-                if lines is not None:
-                    angles = [line[0][1] for line in lines]
-                    median_angle = np.degrees(np.median(angles))
-                    center = (image.shape[1]//2, image.shape[0]//2)
-                    rot_mat = cv2.getRotationMatrix2D(center, median_angle -90, 1.0)
-                    result = cv2.warpAffine(binary, rot_mat, 
-                                            (image.shape[1], image.shape[0]), 
-                                            flags=cv2.INTER_LINEAR)
-                else:
-                    result = binary
+                    denoised = cv2.GaussianBlur(image, (3, 3), 0)
+                    #more contrast
+                    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+                    contrast_enhanced = clahe.apply(denoised)
+                    
+                    #binarization
+                    binary = cv2.adaptiveThreshold(
+                        contrast_enhanced, 
+                        255, 
+                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                        cv2.THRESH_BINARY, 
+                        21,  # Smaller block size for local adaptation
+                        4    # Gentler constant
+                    )
+                    #Hough transform
+                    edges =cv2.Canny(binary, 50, 150, apertureSize=3)
+                    lines = cv2.HoughLines(edges, 1, np.pi/180, 150)
+                    
+                    if lines is not None:
+                        angles = [line[0][1] for line in lines]
+                        median_angle = np.degrees(np.median(angles))
+                        # Only rotate if skew exceeds a threshold (e.g., > 1 degree)
+                        if abs(median_angle - 90) > 2.0:
+                            center = (binary.shape[1]//2, binary.shape[0]//2)
+                            rot_mat = cv2.getRotationMatrix2D(center, median_angle - 90, 1.0)
+                            binary = cv2.warpAffine(
+                                binary, 
+                                rot_mat, 
+                                (binary.shape[1], binary.shape[0]), 
+                                flags=cv2.INTER_LINEAR,
+                                borderMode=cv2.BORDER_CONSTANT, 
+                                borderValue=255  # Fill borders with white
+                            )
                 
-                cleaned_image = result
+                cleaned_image = binary
                 
                 pix = fitz.Pixmap(
                     fitz.csGRAY, 
@@ -416,7 +452,7 @@ def convert_to_musicxml(score: Score, db: Session):
         if result is None:
             raise ValueError(f"Conversion failed for {processed_file}")
         
-        score.xmlmusic_path = result 
+        score.xmlmusic_path = str(musicxml_dir)
         db.commit()
         logging.info(f"Converting complete. MusicXML file saved to {score.xmlmusic_path}")
         

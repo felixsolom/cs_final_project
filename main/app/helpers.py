@@ -3,7 +3,9 @@ from functools import wraps
 from .auth_utils import decode_access_token
 from magic import Magic
 from tempfile import NamedTemporaryFile
+from deprecated import deprecated
 
+@deprecated
 def login_required(func):
     
     @wraps(func)
