@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 # aux locally created functions
 from .auth_utils import verify_password, create_access_token ,decode_access_token, JWTError, hash_password
-from .helpers import validate_file
+from .helpers import validate_file, pack_bits
 from .audiveris import AudiverisConverter
 
 import cv2
@@ -286,7 +286,11 @@ def clean_up(score: Score, db: Session):
             
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                pix = page.get_pixmap(alpha=False)
+                width = page.rect.width
+                height = page.rect.height
+                
+                
+                pix = page.get_pixmap(dpi=300, alpha=False)
                 logging.info(f"PDF channels: {pix.n} (3=RGB, 4=RGBA)")
                     
                 if not pix or pix.width == 0 or pix.height == 0:
@@ -313,17 +317,30 @@ def clean_up(score: Score, db: Session):
                     raise ValueError(f"Page {page_num + 1}: Empty image")
                 
                 std_dev = np.std(image)
-                if 50 < std_dev < 150:
+                
+                if 40 < std_dev < 150:
                     logging.info(f"Skipping agressive processing for clean page (std_dev = {std_dev:.2f})")
-                    _, otsu_binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-                    # Apply a gentler adaptive threshold
-                    adaptive_binary = cv2.adaptiveThreshold(
-                        image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 5  # Tuned values
-                    )
-                    # Blend the two binarized results to reduce harshness
-                    binary = cv2.bitwise_and(otsu_binary, adaptive_binary) 
-                     
+                    
+                    binary = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                                                   cv2.THRESH_BINARY, 61, 3)
+                    
+                    '''
+                    otsu_thresh, _ = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                    logging.info(f"Otsu threshold: {otsu_thresh}")
+                    
+                    # Adjust the threshold by subtracting an offset so fewer pixels become black
+                    adjusted_threshold = max(0, otsu_thresh + 1)
+                    logging.info(f"Adjusted threshold: {adjusted_threshold}")
+                    
+                    # Apply thresholding with the adjusted (lower) threshold
+                    _, binary = cv2.threshold(image, adjusted_threshold, 255, cv2.THRESH_BINARY)
+                    '''
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+                    binary = cv2.dilate(binary, kernel, iterations=1)
+                
+        
+                    
+                                 
                 else: 
                 #apply cleaning
                     denoised = cv2.GaussianBlur(image, (3, 3), 0)
@@ -357,20 +374,19 @@ def clean_up(score: Score, db: Session):
                                 (binary.shape[1], binary.shape[0]), 
                                 flags=cv2.INTER_LINEAR,
                                 borderMode=cv2.BORDER_CONSTANT, 
-                                borderValue=255  # Fill borders with white
+                                borderValue=255 
                             )
                 
-                cleaned_image = binary
+                pixmap = fitz.Pixmap(
+                fitz.csGRAY, 
+                binary.shape[1], 
+                binary.shape[0],
+                binary.ravel().tobytes()
+            )
                 
-                pix = fitz.Pixmap(
-                    fitz.csGRAY, 
-                    cleaned_image.shape[1], 
-                    cleaned_image.shape[0],
-                    cleaned_image.ravel().tobytes()
-                )
-                new_page = new_doc.new_page(width=cleaned_image.shape[1], height=cleaned_image.shape[0])
+                new_page = new_doc.new_page(width=width, height=height)
                 
-                new_page.insert_image(new_page.rect, pixmap=pix)
+                new_page.insert_image(new_page.rect, pixmap=pixmap)
                 
             new_doc.save(str(new_pdf_path))
             new_doc.close()

@@ -4,6 +4,8 @@ from .auth_utils import decode_access_token
 from magic import Magic
 from tempfile import NamedTemporaryFile
 from deprecated import deprecated
+import numpy as np
+import logging
 
 @deprecated
 def login_required(func):
@@ -42,6 +44,31 @@ async def validate_file(file: UploadFile):
     await file.seek(0)
     return file_type
 
-
+@deprecated 
+def pack_bits(binary_image):
+    """Converting a 2D numpy binary array (0s and 255s) to a 1-bit packed byte stream."""
+    # Threshold to 0s and 1s
+    binary = (binary_image > 0).astype(np.uint8)
+    # Calculate padding to make width a multiple of 8
+    height, orig_width = binary.shape
+    padded_width  = ((orig_width + 7) // 8) * 8
+    if padded_width != orig_width:
+        pad = padded_width - orig_width
+        logging.info(f"Padding width from {orig_width} to {padded_width} adding {pad} columns on the right")
+        binary = np.pad(binary, ((0, 0), (0, pad)), mode='constant', constant_values=1)
+    packed_array = np.packbits(binary, axis=1, bitorder='big')
+    packed_bytes = packed_array.tobytes()
     
+    # DEBBUGGGG
+    expected_bytes = (padded_width // 8) * height 
+    actual_bytes = len(packed_bytes)
+
+    logging.info(f"Padded image: width={padded_width}, height: {height}")
+    logging.info(f"Expected bytes: {expected_bytes}, actual bytes: {actual_bytes}")
+
+    return packed_bytes, padded_width, height
+
+
+
+        
 

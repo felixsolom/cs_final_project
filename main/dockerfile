@@ -1,13 +1,38 @@
-FROM python:3.9-slim
+FROM python:3.9-slim-buster
 
 WORKDIR /app
 
-# Installing system dependencies
+# Overwrite apt sources to use archived Buster repositories.
+RUN echo "deb http://archive.debian.org/debian/ buster main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian/ buster-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
+# Installing system dependencies with explicit additional packages for dependency satisfaction.
 RUN apt-get update && apt-get install -y \
     wget \
     git \
     unzip \
+    libffi-dev \
     libopencv-dev \
+    libopencv-calib3d-dev \
+    libopencv-contrib-dev \
+    libopencv-core-dev \
+    libopencv-features2d-dev \
+    libopencv-flann-dev \
+    libopencv-highgui-dev \
+    libopencv-imgcodecs-dev \
+    libopencv-imgproc-dev \
+    libopencv-ml-dev \
+    libopencv-objdetect-dev \
+    libopencv-photo-dev \
+    libopencv-shape-dev \
+    libopencv-stitching-dev \
+    libopencv-superres-dev \
+    libopencv-ts-dev \
+    libopencv-video-dev \
+    libopencv-videoio-dev \
+    libopencv-videostab-dev \
+    libopencv-viz-dev \
     libmagic1 \
     libtesseract-dev \
     libleptonica-dev \
@@ -15,25 +40,39 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     build-essential \
+    dpkg-dev \
+    g++ \
+    libc6-dev \
     libgl1-mesa-glx \
     libxi6 \
     libxrender1 \
     libxtst6 \
     libjpeg62-turbo \
+    ghostscript \
+    poppler-utils \
+    bzip2 \
+    zlib1g-dev \
+    libpng-dev \
+    libliff-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# TESSERACT with legacy data files
+# Remove any pre-installed Tesseract to avoid conflicts.
+RUN apt-get purge -y tesseract-ocr libtesseract-dev
+
+# Tesseract with legacy data files.
+# Attempt to install version 4.1.3-1. If unavailable, fall back to the available 4.x packages.
 RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    && apt-get purge -y tesseract-ocr-eng tesseract-ocr-osd \
-    && mkdir -p /usr/share/tessdata \
-    && wget -O /usr/share/tessdata/eng.traineddata \
-        https://github.com/tesseract-ocr/tessdata/raw/4.00/eng.traineddata \
-    && wget -O /usr/share/tessdata/osd.traineddata \
-        https://github.com/tesseract-ocr/tessdata/raw/4.00/osd.traineddata \
-    && chmod -R a+rx /usr/share/tesseract-ocr \
-    && chmod -R a+rx /usr/share/tessdata
+    tesseract-ocr=4.1.3-1 \
+    libtesseract-dev=4.1.3-1 \
+    || apt-get install -y tesseract-ocr libtesseract-dev
+
+# Download legacy language data files (compatible with Tesseract 4.x) and fix permissions.
+RUN mkdir -p /usr/share/tessdata && \
+    wget -O /usr/share/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/raw/4.00/eng.traineddata && \
+    wget -O /usr/share/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/raw/4.00/osd.traineddata && \
+    chmod -R a+rx /usr/share/tessdata
+
 
 
 # 2. Setting environment variables for both Tesseract and JNI

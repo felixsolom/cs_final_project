@@ -10,6 +10,7 @@ anyio==4.8.0
     #   httpx
     #   starlette
     #   watchfiles
+bcrypt
 certifi==2024.12.14
     # via
     #   -r requirements.in
