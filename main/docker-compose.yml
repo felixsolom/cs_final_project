@@ -6,9 +6,9 @@ services:
       resources:
         limits: 
           cpus: '4'
-          memory: 8G
+          memory: 6G
         reservations:
-          memory: 4G
+          memory: 2G
     build: .
     volumes:
       - ./data:/app/data         
@@ -18,11 +18,11 @@ services:
       - "8000:8000"
     environment:
       - AUDIVERIS_PATH=/app/audiveris/build/install/audiveris/bin/audiveris
-      - AUDIVERIS_OPTS=-Xmx6g -XX:+UseZGC -Djava.awt.headless=true --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED
+      - AUDIVERIS_OPTS=-Xmx4g -XX:+UseZGC -Djava.awt.headless=true --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED
       - OMP_THREAD_LIMIT=4  
       - PYTHONUNBUFFERED=1        
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
+      interval: 60s
       timeout: 30s
       retries: 3

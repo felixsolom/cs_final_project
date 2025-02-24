@@ -183,7 +183,20 @@ def login(response: Response, request: Request, data: LoginRequest = Depends(Log
         path="/",
     )
     return response
-  
+
+@app.get("/logout")
+def logout(response: Response, request: Request):
+    response = RedirectResponse(
+        url="/?message=You are now logged out",
+        status_code=status.HTTP_303_SEE_OTHER, 
+    )
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="Lax"
+    )
+    return response
+
 
 @app.get("/")
 async def index(request: Request):
@@ -321,8 +334,8 @@ def clean_up(score: Score, db: Session):
                 if 40 < std_dev < 150:
                     logging.info(f"Skipping agressive processing for clean page (std_dev = {std_dev:.2f})")
                     
-                    binary = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
-                                                   cv2.THRESH_BINARY, 61, 3)
+                    binary = image # cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                                                # cv2.THRESH_BINARY, 61, 3)
                     
                     '''
                     otsu_thresh, _ = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -334,12 +347,10 @@ def clean_up(score: Score, db: Session):
                     
                     # Apply thresholding with the adjusted (lower) threshold
                     _, binary = cv2.threshold(image, adjusted_threshold, 255, cv2.THRESH_BINARY)
-                    '''
+                    
                     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
                     binary = cv2.dilate(binary, kernel, iterations=1)
-                
-        
-                    
+                '''    
                                  
                 else: 
                 #apply cleaning

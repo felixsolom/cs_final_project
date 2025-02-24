@@ -28,50 +28,44 @@ class AudiverisConverter:
         
         try:
             cmd = [
+                
                 str(self.audiveris_path),
                 "-batch",
                 "-export",
-                "-save",
-                "-print",
-                "-constant", "omr.fallback.Reader=PDF_BOX", 
-                "-constant", "org.audiveris.omr.sheet.BookManager.useOpus=true",
+                "-option", "org.audiveris.omr.sheet.BookManager.useOpus=true",
+                "-option", "org.audiveris.omr.text.Language.defaultSpecification=eng+ita",
+                "-option", "org.audiveris.omr.text.tesseract.path=/usr/local/bin/tesseract",
+                "-option", "org.audiveris.omr.text.tesseract.datadir=/usr/local/share/tessdata",
+                "-option", "org.audiveris.omr.text.tesseract.ocrEngineMode=1",  # LSTM mode
+                "-option", "org.audiveris.omr.batch.threadCount=4",  # Parallel processing
+                "-option", "org.audiveris.omr.batch.memoryMax=4096", # 4GB heap
                 
-                "-constant", "ocr.engine=TesseractOCR",
-                "-constant", "ocr.language=eng",
-                "-constant", "ocr.tessdataPath=/usr/share/tessdata",
-                "-constant", "ocr.legacyMode=true",
-                "-constant", "ocr.engineMode=0",
-                "-constant", "omr.engine.tesseract.path=/usr/bin/tesseract", 
-                "-constant", "omr.engine.tesseract.dataPath=/usr/share/tessdata",
+                "-option", "org.audiveris.omr.sheet.SheetStub.maxErrors=500",  
+                "-option", "org.audiveris.omr.steps.sheet.MaxStubs=20",  
+                "-option", "book.export.force=true",  
+
+                "-option", "org.audiveris.omr.steps.TEXTS.minGrade=0.05",  
+                "-option", "org.audiveris.omr.steps.DYNAMICS.minGrade=0.15",  
+                "-option", "org.audiveris.omr.steps.SYMBOLS.minGrade=0.1",
                 
-                "-constant", "omr.steps.RHYTHMS.maxRetries=5",
-                "-constant", "omr.rhythms.preserveOriginalVoices=true",
-                "-constant", "omr.rhythms.maxDuration=16",
-                "-constant", "omr.steps.RHYTHMS.maxGap=6",  
-                "-constant", "omr.steps.TIME.maxCandidates=2",
-                "-constant", "omr.steps.KEYS.maxCandidates=2",
-                "-constant", "omr.steps.CLEFS.maxCandidates=2",
-                "-constant", "omr.steps.RHYTHMS.useSamples=true", 
-                "-constant", "omr.steps.GRID.staffLineThickness=3", 
-                "-constant", "omr.steps.GRID.minStaffLineCount=4",
-                "-constant", "omr.steps.GRID.peakMergeX=0.5",
-                "-constant", "omr.steps.GRID.peakMergeY=0.3", 
-                "-constant", "omr.steps.TIME_PURITY=0.9", 
-                "-constant", "omr.steps.BEAMS.maxSlope=0.3",
-                "-constant", "omr.steps.BEAMS.minGrade=0.3"
-                "-constant", "omr.steps.BEAMS.maxThickness=4"
-                "-constant", "omr.steps.HEADS.minGrade=0.5",
-                "-constant", "omr.steps.STEMMING.minStemLength=8",  # Reduce if stems are short (default=10)
-                "-constant", "omr.steps.STEMMING.minStemWidth=1",   # Reduce for thinner stems (default=2)
-                "-constant", "omr.steps.STEMMING.peakThreshold=20", # Lower to detect faint stems (default=30) 
-                "-constant", "sheet.maxStubs=5",
-                "-constant", "sheet.maxErrors=100",
-                "-constant", "omr.sheet.staves.allowTablature=false",
-                "-constant", "book.export.force=true",              # Force export even on partial success 
+                "-option", "omr.sheet.staves.voidPartCreation=true",  # Keeps irregular staff regions  
+                "-option", "omr.sheet.parts.mergePolicy=ALWAYS",      # Forces system connectivity  
+                "-option", "omr.steps.GRID.peakMergeX=1.0",           # Broad horizontal staff merging  
+                "-option", "omr.steps.GRID.peakMergeY=0.8",           # Loose vertical staff alignment  
+
+                # Removing TIME processing  
+                "-option", "omr.steps.TIME.maxCandidates=0",  
+                # Disabling key signature analysis  
+                "-option", "omr.steps.KEYS.maxCandidates=0",  
+                # Bypassing clef validation  
+                "-option", "omr.steps.CLEFS.maxCandidates=0", 
                 
+                "-option", "musicxml.extension.visualDescriptors=true", # Shape complexity metrics  
+
                 "-output", str(output_dir),
                 str(input_path)
             ]
+
             
             logger.debug(f"Running command {' '.join(cmd )}")
             
