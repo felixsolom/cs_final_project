@@ -10,10 +10,10 @@ from fastapi import FastAPI, File, UploadFile, Request, HTTPException, Depends, 
 from fastapi.staticfiles import StaticFiles
 from fastapi.requests import Request
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import Response, RedirectResponse
+from fastapi.responses import Response, RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from .database import SessionLocal, engine
 from .models import User, Score
 
@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 # aux locally created functions
 from .auth_utils import verify_password, create_access_token ,decode_access_token, JWTError, hash_password
-from .helpers import validate_file, pack_bits
+from .helpers import validate_file
 from .audiveris import AudiverisConverter
 
 import cv2
@@ -43,8 +43,8 @@ DATA_DIR.mkdir(exist_ok=True)
 (DATA_DIR / "xmlmusic").mkdir(exist_ok=True, parents=True)
 
 
-#fastapi boiler plate
 app = FastAPI()
+
 converter = AudiverisConverter()
 
 app.add_middleware(
@@ -277,8 +277,59 @@ async def upload_sheet_music(request: Request,
             detail=f"An unexpected error occured: {str(e)}"
             )
         
+@app.get("/scores/")
+async def upload_sheet_music_page(request: Request, 
+                                  user: User = Depends(get_current_user), 
+                                  db: Session = Depends(get_db)):
+    scores = db.query(Score).options(joinedload(Score.user)).filter(Score.xmlmusic_path != None).all()
+    return templates.TemplateResponse(
+        "scores.html", context={'request': request, "scores": scores}
+    )
+              
+@app.get("/download/{score_id}")
+async def download_score(score_id: int, db: Session = Depends(get_db)):
+    score = db.query(Score).filter(Score.id == score_id).first()
+    if not score or not score.xmlmusic_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Score file not found"
+        )
+    conversion_dir = Path(score.xmlmusic_path)
     
-    #cleaning up the .pdf and .jpeg images using OpenCV library before proccessing further.
+    if not conversion_dir.exists():
+        logging.critical(f"Missing conversion directory: {conversion_dir}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Invalid conversion path configuration")
+        
+    canditate_files = sorted(
+        list(conversion_dir.glob("*.mxl")) + 
+        list(conversion_dir.glob("*.xml")),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True
+    )
+    
+    if not canditate_files:
+        logging.error(f"No files in directory: {conversion_dir}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversion file missing"
+        )
+    
+    target_file = canditate_files[0]
+    if not target_file.is_file():
+        logging.error((f"Invalid file type: {target_file}"))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid conversion output"
+        )
+            
+    return FileResponse(
+        path=target_file,
+        filename=f"score_{score_id}.mxl",
+        media_type="application/vnd.recordare.musicxml"
+    )
+      
+#cleaning up the .pdf and .jpeg images using OpenCV library before proccessing further.
     
 def clean_up(score: Score, db: Session):
     try:
@@ -353,7 +404,7 @@ def clean_up(score: Score, db: Session):
                 '''    
                                  
                 else: 
-                #apply cleaning
+                
                     denoised = cv2.GaussianBlur(image, (3, 3), 0)
                     #more contrast
                     clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))

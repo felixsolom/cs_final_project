@@ -6,6 +6,9 @@ from tempfile import NamedTemporaryFile
 from deprecated import deprecated
 import numpy as np
 import logging
+import cv2
+import fitz
+
 
 @deprecated
 def login_required(func):

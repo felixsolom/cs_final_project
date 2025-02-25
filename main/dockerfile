@@ -4,12 +4,11 @@ ENV PATH=/usr/local/bin:$PATH
 
 WORKDIR /app
 
-# Use the official Debian Buster repositories
 RUN echo "deb http://deb.debian.org/debian buster main contrib non-free" > /etc/apt/sources.list && \
     echo "deb http://deb.debian.org/debian buster-updates main contrib non-free" >> /etc/apt/sources.list && \
     echo "deb http://security.debian.org/debian-security buster/updates main contrib non-free" >> /etc/apt/sources.list
 
-# Update and perform a full upgrade to synchronize package versions
+
 RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
@@ -64,7 +63,7 @@ RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y --no-install
 
 RUN apt-get purge -y tesseract-ocr libtesseract-dev libtesseract4 || true
 
-# Build and install Tesseract 3.0.4 from source (using the 3.04.01 release).
+# Building and install Tesseract 3.0.4 from source.
 RUN wget -O tesseract-3.04.01.tar.gz https://github.com/tesseract-ocr/tesseract/archive/3.04.01.tar.gz && \
     tar -zxvf tesseract-3.04.01.tar.gz && \
     cd tesseract-3.04.01 && \
@@ -81,33 +80,29 @@ RUN ln -sf /usr/local/lib/libtesseract.so.3.0.4 /usr/lib/libtesseract.so.3 && \
     ln -sf /usr/local/lib/libtesseract.so.3 /usr/lib/libtesseract.so && \
     ldconfig
 
-# Version verification
-# Replace the failing verification step with:
 
-# After Tesseract installation and symlinking
 RUN tesseract --version &> tesseract_version.txt
 
-# Debug: Show raw version output with non-printable characters
+
 RUN cat -v tesseract_version.txt
 
-# Final verification using AWK
 RUN tesseract --version | awk 'NR==1 && $2 == "3.04.01" {exit 0} {exit 1}' || (echo "WRONG VERSION" && exit 1)
 
-# Download legacy language data files compatible with Tesseract 3.x and install them in /usr/local/share/tessdata.
+# Downloading legacy language data files compatible with Tesseract 3.x and install them in /usr/local/share/tessdata.
 RUN mkdir -p /usr/local/share/tessdata && \
     wget -O /usr/local/share/tessdata/eng.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata/3.04.00/eng.traineddata && \
     wget -O /usr/local/share/tessdata/osd.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata/3.04.00/osd.traineddata && \
     wget -O /usr/local/share/tessdata/ita.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata/3.04.00/ita.traineddata && \
     chmod -R a+rx /usr/local/share/tessdata
 
-# symlinks for Tesseract 3.04
+
 
 
 # env for tesseract
 ENV TESSDATA_PREFIX=/usr/local/share/tessdata \
     LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 
-# verifications
+
 
 # JDK 21
 RUN wget https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz \
